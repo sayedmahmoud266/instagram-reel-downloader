@@ -90,7 +90,44 @@ Example:
 npm start -- from-file urls.txt --output ./my-reels
 ```
 
-Where `urls.txt` contains one Instagram reel URL per line.
+The tool supports multiple file formats:
+
+- **Text files (.txt)**: One URL per line
+  ```
+  https://www.instagram.com/reel/ABC123xyz/
+  https://www.instagram.com/p/DEF456uvw/
+  ```
+
+- **CSV files (.csv)**: URLs can be in any column
+  ```
+  1,https://www.instagram.com/reel/ABC123xyz/,Example Reel
+  2,https://www.instagram.com/p/DEF456uvw/,Another Reel
+  ```
+
+- **JSON files (.json)**: Several formats supported
+  ```json
+  // Simple array of URLs
+  [
+    "https://www.instagram.com/reel/ABC123xyz/",
+    "https://www.instagram.com/p/DEF456uvw/"
+  ]
+  
+  // Or object with URL properties
+  {
+    "reel1": "https://www.instagram.com/reel/ABC123xyz/",
+    "reel2": "https://www.instagram.com/p/DEF456uvw/"
+  }
+  
+  // Or object with URL array
+  {
+    "reels": [
+      "https://www.instagram.com/reel/ABC123xyz/",
+      "https://www.instagram.com/p/DEF456uvw/"
+    ]
+  }
+  ```
+
+The tool automatically detects the file format based on the file extension.
 
 ### Command Options
 
@@ -178,3 +215,7 @@ Instagram frequently changes their API and website structure to prevent scraping
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 This is free and open-source software. You are free to use, modify, and distribute it for personal use only.
+
+## Acknowledgments
+
+This project was vibe coded with the help of Windsurf and Claude 3.7 Sonnet.

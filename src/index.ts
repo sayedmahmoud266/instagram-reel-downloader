@@ -204,10 +204,55 @@ program
       }
       
       const content = await fs.readFile(file, 'utf-8');
-      const urls = content
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0 && line.includes('instagram.com'));
+      const fileExt = path.extname(file).toLowerCase();
+      
+      let urls: string[] = [];
+      
+      // Process file based on its extension
+      if (fileExt === '.json') {
+        try {
+          // Parse JSON file
+          const jsonData = JSON.parse(content);
+          
+          // Handle different JSON structures
+          if (Array.isArray(jsonData)) {
+            // Simple array of URLs
+            urls = jsonData.filter(url => typeof url === 'string' && url.includes('instagram.com'));
+          } else if (typeof jsonData === 'object' && jsonData !== null) {
+            // Object with URLs as values
+            const possibleUrlArrays = Object.values(jsonData).filter(val => Array.isArray(val));
+            if (possibleUrlArrays.length > 0) {
+              // Use the first array found
+              urls = possibleUrlArrays[0].filter(url => typeof url === 'string' && url.includes('instagram.com'));
+            } else {
+              // Look for URL strings in the object
+              urls = Object.values(jsonData)
+                .filter((val): val is string => typeof val === 'string' && val.includes('instagram.com'));
+            }
+          }
+        } catch (err) {
+          console.error(`\n❌ Error: Invalid JSON format in file: ${file}`);
+          process.exit(1);
+        }
+      } else if (fileExt === '.csv') {
+        // Process CSV file
+        // Split by lines and then by commas
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+          // Split by comma and trim each value
+          const values = line.split(',').map(val => val.trim());
+          
+          // Add any value that looks like an Instagram URL
+          urls.push(...values.filter(val => val.includes('instagram.com')));
+        }
+      } else {
+        // Default: treat as text file with one URL per line
+        urls = content
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0 && line.includes('instagram.com'));
+      }
       
       if (urls.length === 0) {
         console.error('\n❌ No valid Instagram URLs found in the file');
