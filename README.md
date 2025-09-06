@@ -1,0 +1,180 @@
+# Instagram Reel Downloader
+
+A simple Node.js application built with TypeScript that allows you to download Instagram reels from URLs. The application is designed to be resilient to Instagram API changes and provides helpful debugging tools.
+
+## Disclaimer
+
+This is an open-source project provided for **personal use only**. It is not intended for commercial use or profit. Please respect Instagram's terms of service and only download content that you have the right to access. The developers of this tool are not responsible for any misuse or violation of Instagram's terms of service.
+
+## Features
+
+- Download a single Instagram reel
+- Download multiple Instagram reels at once
+- Download reels from a file containing URLs (one per line)
+- Customizable output directory
+- Debug mode for troubleshooting Instagram API changes
+- Automatic thumbnail extraction
+- Resilient to Instagram API changes
+- Detailed error messages with troubleshooting tips
+- Automatic handling of duplicate filenames
+- Progress tracking during downloads
+- Batch download with continue-on-error option
+
+## Prerequisites
+
+- Node.js (v12 or higher)
+- npm (v6 or higher)
+
+## Installation
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/sayedmahmoud266/instagram-reel-downloader.git
+   cd instagram-reel-downloader
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Build the application:
+   ```bash
+   npm run build
+   ```
+
+## Usage
+
+### Command Line Interface
+
+#### Download a single reel:
+
+```bash
+npm start -- download <instagram-reel-url> [--output <directory>] [--quiet] [--debug] [--debug-dir <directory>]
+```
+
+Example:
+```bash
+npm start -- download https://www.instagram.com/reel/ABC123xyz/ --output ./my-reels
+```
+
+With debug mode:
+```bash
+npm start -- download https://www.instagram.com/reel/ABC123xyz/ --debug --debug-dir ./debug-logs
+```
+
+#### Download multiple reels:
+
+```bash
+npm start -- batch <instagram-reel-url1> <instagram-reel-url2> ... [--output <directory>] [--quiet] [--continue-on-error] [--debug] [--debug-dir <directory>]
+```
+
+Example:
+```bash
+npm start -- batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --output ./my-reels
+```
+
+With continue-on-error option:
+```bash
+npm start -- batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --continue-on-error
+```
+
+#### Download reels from a file:
+
+```bash
+npm start -- from-file <path-to-file> [--output <directory>] [--quiet] [--continue-on-error] [--debug] [--debug-dir <directory>]
+```
+
+Example:
+```bash
+npm start -- from-file urls.txt --output ./my-reels
+```
+
+Where `urls.txt` contains one Instagram reel URL per line.
+
+### Command Options
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <directory>` | Directory to save downloaded files (default: `./downloads`) |
+| `-q, --quiet` | Suppress progress output |
+| `-c, --continue-on-error` | Continue downloading if one URL fails (batch and from-file only) |
+| `-d, --debug` | Enable debug mode for troubleshooting |
+| `--debug-dir <directory>` | Directory to save debug information (default: `./debug`) |
+
+### Using as a Library
+
+You can also use this package as a library in your own projects:
+
+```typescript
+import { Downloader } from './dist/downloader';
+
+async function downloadReels() {
+  const downloader = new Downloader('./downloads');
+  
+  // Download a single reel
+  const filePath = await downloader.downloadReel('https://www.instagram.com/reel/ABC123xyz/');
+  console.log(`Downloaded to: ${filePath}`);
+  
+  // Download multiple reels
+  const urls = [
+    'https://www.instagram.com/reel/ABC123xyz/',
+    'https://www.instagram.com/reel/DEF456uvw/'
+  ];
+  const filePaths = await downloader.downloadReels(urls);
+  console.log(`Downloaded ${filePaths.length} reels`);
+}
+
+downloadReels().catch(console.error);
+```
+
+## Limitations
+
+- This tool relies on Instagram's web interface, which may change over time. If Instagram updates their website structure, this tool may need to be updated.
+- Instagram may rate-limit or block requests if too many are made in a short period of time.
+- This tool is intended for personal use only. Please respect Instagram's terms of service.
+
+## Troubleshooting
+
+If you encounter issues downloading reels, try the following:
+
+1. **Enable debug mode**: Use the `--debug` flag to save detailed information about the Instagram API response.
+   ```bash
+   npm start -- download <url> --debug
+   ```
+
+2. **Check if the reel is private**: This tool can only download public reels.
+
+3. **Try different URL formats**: Sometimes using a different URL format can help:
+   - `https://www.instagram.com/p/CODE/`
+   - `https://www.instagram.com/reel/CODE/`
+   - `https://www.instagram.com/tv/CODE/`
+
+4. **Rate limiting**: If you're getting errors about failed requests, Instagram might be rate-limiting your IP address. Wait a while before trying again.
+
+5. **Check debug logs**: If you used the `--debug` flag, check the debug directory for JSON files containing the Instagram API responses. These can help identify why the download failed.
+
+6. **403 Forbidden errors**: If you're getting 403 Forbidden errors, it might be because Instagram is blocking your requests. Try using a different IP address or wait a while before trying again.
+
+7. **Continue on error**: When downloading multiple reels, use the `--continue-on-error` flag to continue downloading even if some reels fail.
+   ```bash
+   npm start -- batch <url1> <url2> --continue-on-error
+   ```
+
+## Handling Instagram API Changes
+
+Instagram frequently changes their API and website structure to prevent scraping. This tool is designed to be resilient to these changes by:
+
+1. **Multiple extraction methods**: The tool tries multiple methods to extract the video URL from Instagram's response.
+
+2. **Debug mode**: When enabled, the tool saves detailed information about Instagram's responses, which can help identify changes in their API structure.
+
+3. **Regular updates**: If the tool stops working due to Instagram API changes, check for updates or submit an issue on GitHub.
+
+4. **Custom headers**: The tool uses custom headers to mimic a real browser, which helps avoid being blocked by Instagram.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This is free and open-source software. You are free to use, modify, and distribute it for personal use only.
