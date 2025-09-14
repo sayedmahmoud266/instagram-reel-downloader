@@ -11,16 +11,19 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "download": "node dist/index.js download",
     "batch": "node dist/index.js batch",
-    "from-file": "node dist/index.js from-file"
+    "from-file": "node dist/index.js from-file",
+    "publish": "npm run build && npm publish",
+    "prepublish": "npm run build"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sayedmahmoud266/instagram-reel-downloader.git"
   },
-  "keywords": ["instagram", "reel", "downloader", "video", "cli"],
+  "keywords": ["instagram", "reel", "downloader", "video", "cli", "metadata", "batch", "social-media"],
   "bin": {
     "instagram-reel-downloader": "./dist/index.js",
-    "insta-dl": "./dist/index.js"
+    "insta-dl": "./dist/index.js",
+    "instareels": "./dist/index.js"
   },
   "author": "Sayed Mahmoud",
   "license": "MIT",
@@ -28,7 +31,7 @@
     "url": "https://github.com/sayedmahmoud266/instagram-reel-downloader/issues"
   },
   "homepage": "https://github.com/sayedmahmoud266/instagram-reel-downloader#readme",
-  "description": "A simple Node.js application to download Instagram reels from URLs or files",
+  "description": "A powerful CLI tool to download Instagram reels with metadata extraction. Supports single downloads, batch processing, and file-based operations.",
   "engines": {
     "node": ">=12.0.0"
   },

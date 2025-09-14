@@ -28,6 +28,21 @@ This is an open-source project provided for **personal use only**. It is not int
 
 ## Installation
 
+### Global Installation (Recommended)
+
+Install globally via npm to use the CLI from anywhere:
+
+```bash
+npm install -g instagram-reel-downloader
+```
+
+After installation, you can use any of these commands:
+- `instareels` (recommended - short and easy)
+- `instagram-reel-downloader` 
+- `insta-dl`
+
+### Local Development Installation
+
 1. Clone this repository:
    ```bash
    git clone https://github.com/sayedmahmoud266/instagram-reel-downloader.git
@@ -50,44 +65,82 @@ This is an open-source project provided for **personal use only**. It is not int
 
 #### Download a single reel:
 
+**Global installation:**
 ```bash
-npm start -- download <instagram-reel-url> [--output <directory>] [--quiet] [--debug] [--debug-dir <directory>]
+instareels download <instagram-reel-url> [options]
 ```
 
-Example:
+**Local development:**
 ```bash
+npm start -- download <instagram-reel-url> [options]
+```
+
+Examples:
+```bash
+# Using global installation (recommended)
+instareels download https://www.instagram.com/reel/ABC123xyz/ --output ./my-reels
+
+# With metadata extraction
+instareels download https://www.instagram.com/reel/ABC123xyz/ --save-metadata
+
+# With debug mode
+instareels download https://www.instagram.com/reel/ABC123xyz/ --debug --debug-dir ./debug-logs
+
+# Local development
 npm start -- download https://www.instagram.com/reel/ABC123xyz/ --output ./my-reels
-```
-
-With debug mode:
-```bash
-npm start -- download https://www.instagram.com/reel/ABC123xyz/ --debug --debug-dir ./debug-logs
 ```
 
 #### Download multiple reels:
 
+**Global installation:**
 ```bash
-npm start -- batch <instagram-reel-url1> <instagram-reel-url2> ... [--output <directory>] [--quiet] [--continue-on-error] [--debug] [--debug-dir <directory>]
+instareels batch <instagram-reel-url1> <instagram-reel-url2> ... [options]
 ```
 
-Example:
+**Local development:**
 ```bash
+npm start -- batch <instagram-reel-url1> <instagram-reel-url2> ... [options]
+```
+
+Examples:
+```bash
+# Using global installation
+instareels batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --output ./my-reels
+
+# With continue-on-error option
+instareels batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --continue-on-error
+
+# With metadata extraction
+instareels batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --save-metadata
+
+# Local development
 npm start -- batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --output ./my-reels
-```
-
-With continue-on-error option:
-```bash
-npm start -- batch https://www.instagram.com/reel/ABC123xyz/ https://www.instagram.com/reel/DEF456uvw/ --continue-on-error
 ```
 
 #### Download reels from a file:
 
+**Global installation:**
 ```bash
-npm start -- from-file <path-to-file> [--output <directory>] [--quiet] [--continue-on-error] [--debug] [--debug-dir <directory>]
+instareels from-file <path-to-file> [options]
 ```
 
-Example:
+**Local development:**
 ```bash
+npm start -- from-file <path-to-file> [options]
+```
+
+Examples:
+```bash
+# Using global installation
+instareels from-file urls.txt --output ./my-reels
+
+# With metadata extraction
+instareels from-file urls.txt --save-metadata
+
+# With continue-on-error option
+instareels from-file urls.txt --continue-on-error
+
+# Local development
 npm start -- from-file urls.txt --output ./my-reels
 ```
 
@@ -134,6 +187,12 @@ The tool automatically detects the file format based on the file extension.
 
 Use the `--save-metadata` flag to save reel information as JSON files alongside the downloaded videos:
 
+**Global installation:**
+```bash
+instareels download https://www.instagram.com/reel/ABC123xyz/ --save-metadata
+```
+
+**Local development:**
 ```bash
 npm start -- download https://www.instagram.com/reel/ABC123xyz/ --save-metadata
 ```
@@ -215,6 +274,10 @@ If you encounter issues downloading reels, try the following:
 
 1. **Enable debug mode**: Use the `--debug` flag to save detailed information about the Instagram API response.
    ```bash
+   # Global installation
+   instareels download <url> --debug
+   
+   # Local development
    npm start -- download <url> --debug
    ```
 
@@ -233,6 +296,10 @@ If you encounter issues downloading reels, try the following:
 
 7. **Continue on error**: When downloading multiple reels, use the `--continue-on-error` flag to continue downloading even if some reels fail.
    ```bash
+   # Global installation
+   instareels batch <url1> <url2> --continue-on-error
+   
+   # Local development
    npm start -- batch <url1> <url2> --continue-on-error
    ```
 
