@@ -1,25 +1,37 @@
 {
   "name": "instagram-reel-downloader",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "prepublishOnly": "npm run build",
-    "postinstall": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
     "download": "node dist/index.js download",
     "batch": "node dist/index.js batch",
     "from-file": "node dist/index.js from-file",
-    "publish": "npm run build && npm publish",
-    "prepublish": "npm run build"
+    "publish": "npm run build && npm publish"
   },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sayedmahmoud266/instagram-reel-downloader.git"
   },
-  "keywords": ["instagram", "reel", "downloader", "video", "cli", "metadata", "batch", "social-media"],
+  "keywords": [
+    "instagram",
+    "reel",
+    "downloader",
+    "video",
+    "cli",
+    "metadata",
+    "batch",
+    "social-media"
+  ],
   "bin": {
     "instagram-reel-downloader": "./dist/index.js",
     "insta-dl": "./dist/index.js",
