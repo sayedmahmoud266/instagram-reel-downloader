@@ -1,6 +1,6 @@
 {
   "name": "instagram-reel-downloader",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -10,7 +10,7 @@
     "download": "node dist/index.js download",
     "batch": "node dist/index.js batch",
     "from-file": "node dist/index.js from-file",
-    "publish": "npm run build && npm publish"
+    "prepublish": "npm run build"
   },
   "files": [
     "dist/**/*",

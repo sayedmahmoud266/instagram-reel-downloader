@@ -3,6 +3,19 @@
 import { Command } from 'commander';
 import { Downloader } from './downloader';
 import path from 'path';
+import { readFileSync } from 'fs';
+
+// Read version from package.json
+const getVersion = (): string => {
+  try {
+    const packageJsonPath = path.join(__dirname, '..', 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+    return packageJson.version;
+  } catch (error) {
+    // Fallback version if package.json can't be read
+    return '1.0.0';
+  }
+};
 
 // Create a new command program
 const program = new Command();
@@ -11,7 +24,7 @@ const program = new Command();
 program
   .name('instagram-reel-downloader')
   .description('Download Instagram reels from URLs')
-  .version('1.0.0');
+  .version(getVersion());
 
 // Add command to download a single reel
 program
