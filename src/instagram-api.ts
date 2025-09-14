@@ -3,12 +3,16 @@ import { URL } from 'url';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 
-interface InstagramMediaInfo {
+export interface InstagramMediaInfo {
   videoUrl: string;
   fileName: string;
   thumbnailUrl?: string;
   caption?: string;
   username?: string;
+  likes?: number;
+  comments?: number;
+  views?: number;
+  originalUrl?: string;
 }
 
 interface InstagramApiOptions {
@@ -217,12 +221,12 @@ export class InstagramAPI {
         /"video_versions":\[\{"width":\d+,"height":\d+,"url":"(https:\/\/[^"]+)"/,
         /"video_url":"(https:\/\/[^"]+)"/,
         /property="og:video" content="(https:\/\/[^"]+)"/,
-        /property="og:video:secure_url" content="(https:\/\/[^"]+)"/,
-        /"contentUrl":"(https:\/\/[^"]+\.mp4[^"]*)"/,
-        /url":"(https:\/\/[^"]+\.mp4[^"]*)"/,
-        /url":\s*"([^"]+\.mp4[^"]*)"/,
-        /"url":\s*"([^"]+\.mp4[^"]*)"/
+        /"playable_url":"(https:\/\/[^"]+)"/,
+        /"src":"(https:\/\/[^"]+\.mp4[^"]*)"/
       ];
+
+      // Look for metadata in PolarisPostRootQueryRelayPreloader JSON
+      const metadataPattern = /"PolarisPostRootQueryRelayPreloader[^"]*",\s*(\{[^}]*"data":\{[^}]*"xdt_api__v1__media__shortcode__web_info"[^}]*\}[^}]*\})/;
       
       let jsonData = null;
       let usedPattern = '';
@@ -271,30 +275,76 @@ export class InstagramAPI {
         console.log('Could not extract JSON data, trying to find direct video URLs in HTML content...');
         
         if (typeof response.data === 'string') {
-          // Try to find direct video URLs in the HTML content
-          for (const pattern of directVideoUrlPatterns) {
-            const match = response.data.match(pattern);
-            if (match && match[1]) {
-              // Clean up the URL by removing escape characters
-              let videoUrl = match[1]
-                .replace(/\\u0025/g, '%')
-                .replace(/\\u002F/g, '/')
-                .replace(/\\u003A/g, ':')
-                .replace(/\\u003F/g, '?')
-                .replace(/\\u003D/g, '=')
-                .replace(/\\u0026/g, '&')
-                .replace(/\\/g, ''); // Remove all remaining backslashes
+          // First try to extract metadata from script tags containing xdt_api__v1__media__shortcode__web_info
+          // Extract individual fields using simpler patterns
+          const videoUrlMatch = response.data.match(/"video_versions":\[{"width":\d+,"height":\d+,"url":"([^"]+)"/);
+          const likeCountMatch = response.data.match(/"like_count":(\d+)/);
+          const commentCountMatch = response.data.match(/"comment_count":(\d+)/);
+          const viewCountMatch = response.data.match(/"view_count":(\d+)/);
+          const usernameMatch = response.data.match(/"username":"([^"]+)"/);
+          const captionMatch = response.data.match(/"caption":{"text":"([^"]*)"/) || [null, ''];
+          
+          if (videoUrlMatch && videoUrlMatch[1]) {
+            try {
+              let videoUrl = videoUrlMatch[1];
+              // Clean up escaped characters
+              videoUrl = videoUrl.replace(/\\u0026/g, '&')
+                               .replace(/\\u003D/g, '=')
+                               .replace(/\\\//g, '/')
+                               .replace(/\\"/g, '"')
+                               .replace(/\\u00253D/g, '=')
+                               .replace(/\\u00253D/g, '=');
               
-              console.log('Found direct video URL in HTML content:', videoUrl.substring(0, 100) + '...');
+              const likes = likeCountMatch ? parseInt(likeCountMatch[1]) : 0;
+              const comments = commentCountMatch ? parseInt(commentCountMatch[1]) : 0;
+              const views = viewCountMatch ? parseInt(viewCountMatch[1]) : 0;
+              const username = usernameMatch ? usernameMatch[1] : '';
+              const caption = captionMatch ? captionMatch[1] : '';
               
-              // Create a simple JSON structure with the video URL
               jsonData = {
                 directVideoUrl: videoUrl,
-                shortcode: shortcode
+                shortcode: shortcode,
+                metadata: {
+                  code: shortcode,
+                  like_count: likes,
+                  comment_count: comments,
+                  view_count: views,
+                  user: { username: username },
+                  caption: { text: caption },
+                  video_versions: [{ url: videoUrl }]
+                }
               };
-              
-              usedPattern = 'direct-video-url-pattern';
-              break;
+              usedPattern = 'individual-field-extraction';
+              console.log(`Found metadata: likes=${likes}, comments=${comments}, views=${views}, username=${username}`);
+            } catch (err) {
+              console.log('Failed to parse individual field metadata:', err instanceof Error ? err.message : 'Unknown error');
+            }
+          }
+
+          // Fallback: Try to find direct video URLs in the HTML content
+          if (!jsonData) {
+            for (const pattern of directVideoUrlPatterns) {
+              const match = response.data.match(pattern);
+              if (match && match[1]) {
+                // Clean up the URL by removing escape characters
+                let videoUrl = match[1];
+                
+                // Remove escape characters
+                videoUrl = videoUrl.replace(/\\u0026/g, '&')
+                                   .replace(/\\u003D/g, '=')
+                                   .replace(/\\\//g, '/')
+                                   .replace(/\\"/g, '"');
+                
+                // Create a simple JSON structure with the video URL
+                jsonData = {
+                  directVideoUrl: videoUrl,
+                  shortcode: shortcode
+                };
+                
+                usedPattern = 'direct-video-url-pattern';
+                console.log(`Found direct video URL in HTML content: ${videoUrl.substring(0, 100)}...`);
+                break;
+              }
             }
           }
         }
@@ -325,12 +375,28 @@ export class InstagramAPI {
       let thumbnailUrl = '';
       let caption = '';
       let username = '';
+      let likes = 0;
+      let comments = 0;
+      let views = 0;
       
       // Check if we have a direct video URL
       if (jsonData.directVideoUrl) {
         videoUrl = jsonData.directVideoUrl;
         fileName = `${shortcode}.mp4`;
-        console.log('Using direct video URL from HTML content');
+        
+        // Extract metadata if available
+        if (jsonData.metadata) {
+          const media = jsonData.metadata;
+          username = media.user?.username || '';
+          caption = media.caption?.text || '';
+          likes = media.like_count || 0;
+          comments = media.comment_count || 0;
+          views = media.view_count || media.play_count || 0;
+          thumbnailUrl = media.image_versions2?.candidates?.[0]?.url || '';
+          console.log('Using metadata from PolarisPostRootQueryRelayPreloader');
+        } else {
+          console.log('Using direct video URL from HTML content');
+        }
       }
       
       // Structure 1: PostPage format
@@ -350,6 +416,9 @@ export class InstagramAPI {
               thumbnailUrl = media.display_url || media.thumbnail_src;
               caption = media.edge_media_to_caption?.edges[0]?.node?.text || '';
               username = media.owner?.username || '';
+              likes = media.edge_media_preview_like?.count || 0;
+              comments = media.edge_media_to_comment?.count || 0;
+              views = media.video_view_count || 0;
               console.log('Found video URL in graphql structure');
             }
           }
@@ -362,6 +431,9 @@ export class InstagramAPI {
               thumbnailUrl = media.image_versions2?.candidates[0]?.url || '';
               caption = media.caption?.text || '';
               username = media.user?.username || '';
+              likes = media.like_count || 0;
+              comments = media.comment_count || 0;
+              views = media.view_count || media.play_count || 0;
               console.log('Found video URL in items structure');
             }
           }
@@ -377,6 +449,9 @@ export class InstagramAPI {
           thumbnailUrl = media.display_url || media.thumbnail_src;
           caption = media.edge_media_to_caption?.edges[0]?.node?.text || '';
           username = media.owner?.username || '';
+          likes = media.edge_media_preview_like?.count || 0;
+          comments = media.edge_media_to_comment?.count || 0;
+          views = media.video_view_count || 0;
           console.log('Found video URL in entry_data structure');
         }
       }
@@ -390,6 +465,9 @@ export class InstagramAPI {
           thumbnailUrl = media.image_versions2?.candidates[0]?.url || '';
           caption = media.caption?.text || '';
           username = media.user?.username || '';
+          likes = media.like_count || 0;
+          comments = media.comment_count || 0;
+          views = media.view_count || media.play_count || 0;
           console.log('Found video URL in direct items structure');
         }
       }
@@ -505,7 +583,11 @@ export class InstagramAPI {
         fileName,
         thumbnailUrl,
         caption,
-        username
+        username,
+        likes,
+        comments,
+        views,
+        originalUrl: url
       };
     } catch (error) {
       if (error instanceof Error) {
@@ -516,4 +598,3 @@ export class InstagramAPI {
   }
 }
 
-export { InstagramMediaInfo };

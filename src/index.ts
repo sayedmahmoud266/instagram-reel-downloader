@@ -22,7 +22,8 @@ program
   .option('-q, --quiet', 'Suppress progress output', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
-  .action(async (url: string, options: { output: string, quiet: boolean, debug: boolean, debugDir: string }) => {
+  .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
+  .action(async (url: string, options: { output: string, quiet: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
       // Display a welcome message
       if (!options.quiet) {
@@ -40,7 +41,8 @@ program
       const downloader = new Downloader({
         outputDir: options.output,
         debug: options.debug,
-        debugDir: options.debugDir
+        debugDir: options.debugDir,
+        saveMetadata: options.saveMetadata
       });
       console.log('🔍 Analyzing Instagram URL...');
       const filePath = await downloader.downloadReel(url);
@@ -92,7 +94,8 @@ program
   .option('-c, --continue-on-error', 'Continue downloading if one URL fails', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
-  .action(async (urls: string[], options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string }) => {
+  .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
+  .action(async (urls: string[], options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
       // Display a welcome message
       if (!options.quiet) {
@@ -110,7 +113,8 @@ program
       const downloader = new Downloader({
         outputDir: options.output,
         debug: options.debug,
-        debugDir: options.debugDir
+        debugDir: options.debugDir,
+        saveMetadata: options.saveMetadata
       });
       
       // Process URLs one by one with status updates
@@ -192,7 +196,8 @@ program
   .option('-c, --continue-on-error', 'Continue downloading if one URL fails', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
-  .action(async (file: string, options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string }) => {
+  .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
+  .action(async (file: string, options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
       // Read the file and extract URLs
       const fs = await import('fs-extra');
@@ -278,7 +283,8 @@ program
       const downloader = new Downloader({
         outputDir: options.output,
         debug: options.debug,
-        debugDir: options.debugDir
+        debugDir: options.debugDir,
+        saveMetadata: options.saveMetadata
       });
       
       // Process URLs one by one with status updates

@@ -19,6 +19,7 @@ This is an open-source project provided for **personal use only**. It is not int
 - Automatic handling of duplicate filenames
 - Progress tracking during downloads
 - Batch download with continue-on-error option
+- Metadata extraction and saving as JSON files
 
 ## Prerequisites
 
@@ -129,6 +130,42 @@ The tool supports multiple file formats:
 
 The tool automatically detects the file format based on the file extension.
 
+### Metadata Extraction
+
+Use the `--save-metadata` flag to save reel information as JSON files alongside the downloaded videos:
+
+```bash
+npm start -- download https://www.instagram.com/reel/ABC123xyz/ --save-metadata
+```
+
+The metadata JSON file will have the same name as the video file but with a `.json` extension. For example, if the video is saved as `ABC123xyz.mp4`, the metadata will be saved as `ABC123xyz.json`.
+
+The metadata file includes:
+- **originalUrl**: The original Instagram URL
+- **owner**: Username of the account that posted the reel
+- **likes**: Number of likes (if available)
+- **comments**: Number of comments (if available)
+- **views**: Number of views (if available)
+- **caption**: Reel description/caption
+- **downloadedAt**: Timestamp when the reel was downloaded
+- **videoFileName**: Name of the downloaded video file
+- **thumbnailUrl**: URL of the reel thumbnail (if available)
+
+Example metadata JSON:
+```json
+{
+  "originalUrl": "https://www.instagram.com/reel/ABC123xyz/",
+  "owner": "username",
+  "likes": 1234,
+  "comments": 56,
+  "views": 12345,
+  "caption": "Check out this amazing reel!",
+  "downloadedAt": "2025-01-15T10:30:00.000Z",
+  "videoFileName": "ABC123xyz.mp4",
+  "thumbnailUrl": "https://instagram.com/..."
+}
+```
+
 ### Command Options
 
 | Option | Description |
@@ -138,6 +175,7 @@ The tool automatically detects the file format based on the file extension.
 | `-c, --continue-on-error` | Continue downloading if one URL fails (batch and from-file only) |
 | `-d, --debug` | Enable debug mode for troubleshooting |
 | `--debug-dir <directory>` | Directory to save debug information (default: `./debug`) |
+| `-m, --save-metadata` | Save reel metadata as JSON file alongside the video |
 
 ### Using as a Library
 

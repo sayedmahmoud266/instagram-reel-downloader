@@ -21,6 +21,11 @@ export interface DownloaderOptions {
    * Directory to save debug information
    */
   debugDir?: string;
+  
+  /**
+   * Whether to save reel metadata as JSON file
+   */
+  saveMetadata?: boolean;
 }
 
 /**
@@ -30,6 +35,7 @@ export class Downloader {
   private outputDir: string;
   private debug: boolean;
   private debugDir: string;
+  private saveMetadata: boolean;
 
   /**
    * Constructor
@@ -40,16 +46,55 @@ export class Downloader {
       this.outputDir = options;
       this.debug = false;
       this.debugDir = './debug';
+      this.saveMetadata = false;
     } else {
       this.outputDir = options.outputDir || './downloads';
       this.debug = options.debug || false;
       this.debugDir = options.debugDir || './debug';
+      this.saveMetadata = options.saveMetadata || false;
       
       // Configure the Instagram API
       InstagramAPI.configure({
         debug: this.debug,
         debugDir: this.debugDir
       });
+    }
+  }
+
+  /**
+   * Save metadata as JSON file
+   * @param mediaInfo Media information from Instagram API
+   * @param videoFilePath Path to the downloaded video file
+   */
+  private async saveMetadataFile(mediaInfo: InstagramMediaInfo, videoFilePath: string): Promise<void> {
+    if (!this.saveMetadata) {
+      return;
+    }
+
+    try {
+      // Generate metadata file path (same name as video but with .json extension)
+      const videoFileName = path.basename(videoFilePath, path.extname(videoFilePath));
+      const metadataFileName = `${videoFileName}.json`;
+      const metadataFilePath = path.join(this.outputDir, metadataFileName);
+
+      // Create metadata object
+      const metadata = {
+        originalUrl: mediaInfo.originalUrl,
+        owner: mediaInfo.username,
+        likes: mediaInfo.likes || 0,
+        comments: mediaInfo.comments || 0,
+        views: mediaInfo.views || 0,
+        caption: mediaInfo.caption || '',
+        downloadedAt: new Date().toISOString(),
+        videoFileName: path.basename(videoFilePath),
+        thumbnailUrl: mediaInfo.thumbnailUrl || ''
+      };
+
+      // Save metadata to JSON file
+      await fs.writeJson(metadataFilePath, metadata, { spaces: 2 });
+      console.log(`📄 Metadata saved to: ${metadataFilePath}`);
+    } catch (error) {
+      console.error(`⚠️  Failed to save metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -231,6 +276,9 @@ export class Downloader {
           console.log(`Failed to download thumbnail: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       }
+      
+      // Save metadata if enabled
+      await this.saveMetadataFile(mediaInfo, filePath);
       
       console.log(`Successfully downloaded to: ${filePath}`);
       
