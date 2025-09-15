@@ -33,10 +33,11 @@ program
   .argument('<url>', 'Instagram reel URL')
   .option('-o, --output <directory>', 'Output directory', './downloads')
   .option('-q, --quiet', 'Suppress progress output', false)
+  .option('-v, --verbose', 'Enable verbose logging (shows URLs and detailed info)', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
   .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
-  .action(async (url: string, options: { output: string, quiet: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
+  .action(async (url: string, options: { output: string, quiet: boolean, verbose: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
       // Display a welcome message
       if (!options.quiet) {
@@ -55,7 +56,8 @@ program
         outputDir: options.output,
         debug: options.debug,
         debugDir: options.debugDir,
-        saveMetadata: options.saveMetadata
+        saveMetadata: options.saveMetadata,
+        verbose: options.verbose
       });
       console.log('🔍 Analyzing Instagram URL...');
       const filePath = await downloader.downloadReel(url);
@@ -104,11 +106,13 @@ program
   .argument('<urls...>', 'Instagram reel URLs (space-separated)')
   .option('-o, --output <directory>', 'Output directory', './downloads')
   .option('-q, --quiet', 'Suppress progress output', false)
+  .option('-v, --verbose', 'Enable verbose logging (shows URLs and detailed info)', false)
+  .option('-s, --skip-existing', 'Skip downloading if video and metadata files already exist', false)
   .option('-c, --continue-on-error', 'Continue downloading if one URL fails', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
   .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
-  .action(async (urls: string[], options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
+  .action(async (urls: string[], options: { output: string, quiet: boolean, verbose: boolean, skipExisting: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
       // Display a welcome message
       if (!options.quiet) {
@@ -127,57 +131,16 @@ program
         outputDir: options.output,
         debug: options.debug,
         debugDir: options.debugDir,
-        saveMetadata: options.saveMetadata
+        saveMetadata: options.saveMetadata,
+        verbose: options.verbose,
+        skipExisting: options.skipExisting
       });
       
-      // Process URLs one by one with status updates
-      const results: { url: string, filePath: string, success: boolean, error?: string }[] = [];
+      // Use the enhanced batch download method
+      const results = await downloader.downloadReels(urls);
       
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-        console.log(`\n[${i + 1}/${urls.length}] Processing: ${url}`);
-        
-        try {
-          const filePath = await downloader.downloadReel(url);
-          results.push({ url, filePath, success: true });
-          console.log(`✅ Success: ${url} -> ${filePath}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ url, filePath: '', success: false, error: errorMessage });
-          console.error(`❌ Failed: ${url} - ${errorMessage}`);
-          
-          if (!options.continueOnError) {
-            console.error('\n❌ Stopping batch process due to error. Use --continue-on-error to ignore failures.');
-            break;
-          }
-        }
-      }
-      
-      // Show summary
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
-      
-      console.log('\n📊 Batch Download Summary');
-      console.log('=======================');
-      console.log(`✅ Successfully downloaded: ${successful} out of ${urls.length} reels`);
-      
-      if (failed > 0) {
-        console.log(`❌ Failed downloads: ${failed}`);
-        console.log('\n📋 Failed URLs:');
-        results.filter(r => !r.success).forEach(result => {
-          console.log(`  - ${result.url} (${result.error})`);
-        });
-      }
-      
-      if (successful > 0) {
-        console.log('\n📂 Successful downloads:');
-        results.filter(r => r.success).forEach(result => {
-          console.log(`  - ${result.filePath}`);
-        });
-      }
-      
-      // Exit with error code if any downloads failed
-      if (failed > 0 && successful === 0) {
+      // Exit with error code if no files were downloaded
+      if (results.length === 0) {
         process.exit(1);
       }
     } catch (error) {
@@ -206,87 +169,23 @@ program
   .argument('<file>', 'Path to file containing URLs')
   .option('-o, --output <directory>', 'Output directory', './downloads')
   .option('-q, --quiet', 'Suppress progress output', false)
+  .option('-v, --verbose', 'Enable verbose logging (shows URLs and detailed info)', false)
+  .option('-s, --skip-existing', 'Skip downloading if video and metadata files already exist', false)
   .option('-c, --continue-on-error', 'Continue downloading if one URL fails', false)
   .option('-d, --debug', 'Enable debug mode for troubleshooting', false)
   .option('--debug-dir <directory>', 'Directory to save debug information', './debug')
   .option('-m, --save-metadata', 'Save reel metadata as JSON file', false)
-  .action(async (file: string, options: { output: string, quiet: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
+  .action(async (file: string, options: { output: string, quiet: boolean, verbose: boolean, skipExisting: boolean, continueOnError: boolean, debug: boolean, debugDir: string, saveMetadata: boolean }) => {
     try {
-      // Read the file and extract URLs
-      const fs = await import('fs-extra');
-      
-      // Check if file exists
-      if (!await fs.pathExists(file)) {
-        console.error(`\n❌ Error: File not found: ${file}`);
-        process.exit(1);
-      }
-      
-      const content = await fs.readFile(file, 'utf-8');
-      const fileExt = path.extname(file).toLowerCase();
-      
-      let urls: string[] = [];
-      
-      // Process file based on its extension
-      if (fileExt === '.json') {
-        try {
-          // Parse JSON file
-          const jsonData = JSON.parse(content);
-          
-          // Handle different JSON structures
-          if (Array.isArray(jsonData)) {
-            // Simple array of URLs
-            urls = jsonData.filter(url => typeof url === 'string' && url.includes('instagram.com'));
-          } else if (typeof jsonData === 'object' && jsonData !== null) {
-            // Object with URLs as values
-            const possibleUrlArrays = Object.values(jsonData).filter(val => Array.isArray(val));
-            if (possibleUrlArrays.length > 0) {
-              // Use the first array found
-              urls = possibleUrlArrays[0].filter(url => typeof url === 'string' && url.includes('instagram.com'));
-            } else {
-              // Look for URL strings in the object
-              urls = Object.values(jsonData)
-                .filter((val): val is string => typeof val === 'string' && val.includes('instagram.com'));
-            }
-          }
-        } catch (err) {
-          console.error(`\n❌ Error: Invalid JSON format in file: ${file}`);
-          process.exit(1);
-        }
-      } else if (fileExt === '.csv') {
-        // Process CSV file
-        // Split by lines and then by commas
-        const lines = content.split('\n');
-        
-        for (const line of lines) {
-          // Split by comma and trim each value
-          const values = line.split(',').map(val => val.trim());
-          
-          // Add any value that looks like an Instagram URL
-          urls.push(...values.filter(val => val.includes('instagram.com')));
-        }
-      } else {
-        // Default: treat as text file with one URL per line
-        urls = content
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line.length > 0 && line.includes('instagram.com'));
-      }
-      
-      if (urls.length === 0) {
-        console.error('\n❌ No valid Instagram URLs found in the file');
-        console.error('\n💡 Tip: Each line should contain a single Instagram URL');
-        console.error('   Example: https://www.instagram.com/reel/ABC123xyz/');
-        process.exit(1);
-      }
-      
       // Display a welcome message
       if (!options.quiet) {
         console.log('\n📱 Instagram Reel Downloader - File Mode');
         console.log('======================================');
         console.log(`📄 Input file: ${file}`);
-        console.log(`🔢 Total URLs found: ${urls.length}`);
         console.log(`📁 Output directory: ${options.output}`);
-        console.log(`⚙️ Continue on error: ${options.continueOnError ? 'Yes' : 'No'}`);
+        if (options.skipExisting) {
+          console.log(`⏭️  Skip existing: Enabled`);
+        }
         if (options.debug) {
           console.log(`🔍 Debug mode: Enabled (${options.debugDir})`);
         }
@@ -297,57 +196,16 @@ program
         outputDir: options.output,
         debug: options.debug,
         debugDir: options.debugDir,
-        saveMetadata: options.saveMetadata
+        saveMetadata: options.saveMetadata,
+        verbose: options.verbose,
+        skipExisting: options.skipExisting
       });
       
-      // Process URLs one by one with status updates
-      const results: { url: string, filePath: string, success: boolean, error?: string }[] = [];
+      // Use the enhanced file-based download method
+      const results = await downloader.downloadReelsFromFile(file);
       
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-        console.log(`\n[${i + 1}/${urls.length}] Processing: ${url}`);
-        
-        try {
-          const filePath = await downloader.downloadReel(url);
-          results.push({ url, filePath, success: true });
-          console.log(`✅ Success: ${url} -> ${filePath}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ url, filePath: '', success: false, error: errorMessage });
-          console.error(`❌ Failed: ${url} - ${errorMessage}`);
-          
-          if (!options.continueOnError) {
-            console.error('\n❌ Stopping process due to error. Use --continue-on-error to ignore failures.');
-            break;
-          }
-        }
-      }
-      
-      // Show summary
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
-      
-      console.log('\n📊 File Download Summary');
-      console.log('=======================');
-      console.log(`✅ Successfully downloaded: ${successful} out of ${urls.length} reels`);
-      
-      if (failed > 0) {
-        console.log(`❌ Failed downloads: ${failed}`);
-        console.log('\n📋 Failed URLs:');
-        results.filter(r => !r.success).forEach(result => {
-          console.log(`  - ${result.url} (${result.error})`);
-        });
-      }
-      
-      if (successful > 0) {
-        console.log('\n📂 Successful downloads:');
-        results.filter(r => r.success).forEach(result => {
-          console.log(`  - ${result.filePath}`);
-        });
-      }
-      
-      // Exit with error code if all downloads failed
-      if (failed > 0 && successful === 0) {
+      // Exit with error code if no files were downloaded
+      if (results.length === 0) {
         process.exit(1);
       }
     } catch (error) {

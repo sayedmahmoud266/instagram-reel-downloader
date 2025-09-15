@@ -1,6 +1,8 @@
 import fs from 'fs-extra';
 import path from 'path';
 import fetch from 'node-fetch';
+import * as cliProgress from 'cli-progress';
+import chalk from 'chalk';
 import { InstagramAPI, InstagramMediaInfo } from './instagram-api';
 
 /**
@@ -26,6 +28,16 @@ export interface DownloaderOptions {
    * Whether to save reel metadata as JSON file
    */
   saveMetadata?: boolean;
+  
+  /**
+   * Whether to enable verbose logging
+   */
+  verbose?: boolean;
+  
+  /**
+   * Whether to skip existing files
+   */
+  skipExisting?: boolean;
 }
 
 /**
@@ -36,6 +48,8 @@ export class Downloader {
   private debug: boolean;
   private debugDir: string;
   private saveMetadata: boolean;
+  private verbose: boolean;
+  private skipExisting: boolean;
 
   /**
    * Constructor
@@ -47,11 +61,15 @@ export class Downloader {
       this.debug = false;
       this.debugDir = './debug';
       this.saveMetadata = false;
+      this.verbose = false;
+      this.skipExisting = false;
     } else {
       this.outputDir = options.outputDir || './downloads';
       this.debug = options.debug || false;
       this.debugDir = options.debugDir || './debug';
       this.saveMetadata = options.saveMetadata || false;
+      this.verbose = options.verbose || false;
+      this.skipExisting = options.skipExisting || false;
       
       // Configure the Instagram API
       InstagramAPI.configure({
@@ -92,7 +110,9 @@ export class Downloader {
 
       // Save metadata to JSON file
       await fs.writeJson(metadataFilePath, metadata, { spaces: 2 });
-      console.log(`📄 Metadata saved to: ${metadataFilePath}`);
+      if (this.verbose) {
+        console.log(`${chalk.gray('📄 Metadata saved to:')} ${metadataFilePath}`);
+      }
     } catch (error) {
       console.error(`⚠️  Failed to save metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -121,13 +141,31 @@ export class Downloader {
   }
   
   /**
+   * Check if files already exist for a given base name
+   * @param baseName Base name without extension
+   * @returns Object indicating which files exist
+   */
+  private async checkExistingFiles(baseName: string): Promise<{ video: boolean; metadata: boolean; thumbnail: boolean }> {
+    const videoPath = path.join(this.outputDir, `${baseName}.mp4`);
+    const metadataPath = path.join(this.outputDir, `${baseName}.json`);
+    const thumbnailPath = path.join(this.outputDir, `${baseName}.jpg`);
+    
+    return {
+      video: await fs.pathExists(videoPath),
+      metadata: await fs.pathExists(metadataPath),
+      thumbnail: await fs.pathExists(thumbnailPath)
+    };
+  }
+
+  /**
    * Download a file from a URL with progress tracking
    * @param url URL to download from
    * @param fileName Name to save the file as
    * @param silent Whether to suppress progress output
+   * @param progressBar Optional progress bar instance
    * @returns Path to the downloaded file
    */
-  private async downloadFile(url: string, fileName: string, silent: boolean = false): Promise<string> {
+  private async downloadFile(url: string, fileName: string, silent: boolean = false, progressBar?: cliProgress.SingleBar): Promise<string> {
     try {
       // Create output directory if it doesn't exist
       await fs.ensureDir(this.outputDir);
@@ -137,12 +175,14 @@ export class Downloader {
       const filePath = path.join(this.outputDir, uniqueFileName);
       
       // If the filename was changed, log it
-      if (uniqueFileName !== fileName && !silent) {
+      if (uniqueFileName !== fileName && !silent && this.verbose) {
         console.log(`File already exists. Using unique filename: ${uniqueFileName}`);
       }
       
       // Download the file
-      console.log(`Downloading from: ${url}`);
+      if (this.verbose) {
+        console.log(`Downloading from: ${url}`);
+      }
       const response = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -167,7 +207,18 @@ export class Downloader {
       // Get content length for progress tracking
       const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
       let downloadedBytes = 0;
-      let lastLoggedPercent = 0;
+      
+      // Create progress bar if not silent and no external progress bar provided
+      let fileProgressBar: cliProgress.SingleBar | undefined;
+      if (!silent && !progressBar && contentLength > 0) {
+        fileProgressBar = new cliProgress.SingleBar({
+          format: `${chalk.cyan('Downloading')} ${chalk.yellow(fileName)} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} bytes`,
+          barCompleteChar: '█',
+          barIncompleteChar: '░',
+          hideCursor: true
+        });
+        fileProgressBar.start(contentLength, 0);
+      }
       
       // Create a write stream to save the file
       const fileStream = fs.createWriteStream(filePath);
@@ -182,32 +233,44 @@ export class Downloader {
         if (contentLength > 0) {
           response.body.on('data', (chunk: Buffer) => {
             downloadedBytes += chunk.length;
-            const percent = Math.round((downloadedBytes / contentLength) * 100);
             
-            // Log progress at 10% intervals to avoid console spam
-            if (percent >= lastLoggedPercent + 10 || percent === 100) {
-              console.log(`Download progress: ${percent}% (${downloadedBytes} / ${contentLength} bytes)`);
-              lastLoggedPercent = Math.floor(percent / 10) * 10; // Round to nearest 10%
+            // Update progress bars
+            if (fileProgressBar) {
+              fileProgressBar.update(downloadedBytes);
+            }
+            if (progressBar) {
+              progressBar.increment(chunk.length);
             }
           });
-        } else {
+        } else if (this.verbose) {
           console.log('Content length not available, download progress cannot be tracked');
         }
         
         response.body.pipe(fileStream);
         
         fileStream.on('finish', () => {
-          console.log(`Download completed: ${fileName}`);
+          if (fileProgressBar) {
+            fileProgressBar.stop();
+          }
+          if (!silent && this.verbose) {
+            console.log(`✅ Download completed: ${fileName}`);
+          }
           resolve();
         });
         
         fileStream.on('error', (err) => {
+          if (fileProgressBar) {
+            fileProgressBar.stop();
+          }
           fs.unlink(filePath).catch(() => {}); // Clean up partial file
           reject(err);
         });
         
         // Handle potential timeouts or connection issues
         response.body.on('error', (err) => {
+          if (fileProgressBar) {
+            fileProgressBar.stop();
+          }
           fs.unlink(filePath).catch(() => {}); // Clean up partial file
           reject(new Error(`Connection error during download: ${err.message}`));
         });
@@ -232,11 +295,14 @@ export class Downloader {
   /**
    * Download a reel from an Instagram URL
    * @param url Instagram reel URL
+   * @param globalProgressBar Optional global progress bar for batch operations
    * @returns Path to the downloaded file
    */
-  public async downloadReel(url: string): Promise<string> {
+  public async downloadReel(url: string, globalProgressBar?: cliProgress.SingleBar): Promise<string> {
     try {
-      console.log(`Fetching information for: ${url}`);
+      if (this.verbose) {
+        console.log(`Fetching information for: ${url}`);
+      }
       
       // Get media information with debug mode if enabled
       const mediaInfo = await InstagramAPI.getMediaInfo(url, {
@@ -244,22 +310,39 @@ export class Downloader {
         debugDir: this.debugDir
       });
       
-      console.log(`Downloading reel: ${mediaInfo.fileName}`);
+      const baseName = path.basename(mediaInfo.fileName, '.mp4');
       
-      // Log additional information if available
-      if (mediaInfo.username) {
-        console.log(`Creator: ${mediaInfo.username}`);
+      // Check if files already exist when skip existing is enabled
+      if (this.skipExisting) {
+        const existingFiles = await this.checkExistingFiles(baseName);
+        
+        // If both video and metadata exist (when metadata is enabled), skip
+        const shouldSkip = existingFiles.video && (!this.saveMetadata || existingFiles.metadata);
+        
+        if (shouldSkip) {
+          console.log(`${chalk.yellow('⏭️  Skipping')} ${baseName} - files already exist`);
+          return path.join(this.outputDir, mediaInfo.fileName);
+        }
       }
       
-      if (mediaInfo.caption) {
-        const shortCaption = mediaInfo.caption.length > 50 
-          ? mediaInfo.caption.substring(0, 50) + '...' 
-          : mediaInfo.caption;
-        console.log(`Caption: ${shortCaption}`);
+      console.log(`${chalk.green('📥 Downloading')} ${chalk.bold(baseName)}`);
+      
+      // Log additional information if available and verbose mode is on
+      if (this.verbose) {
+        if (mediaInfo.username) {
+          console.log(`Creator: ${mediaInfo.username}`);
+        }
+        
+        if (mediaInfo.caption) {
+          const shortCaption = mediaInfo.caption.length > 50 
+            ? mediaInfo.caption.substring(0, 50) + '...' 
+            : mediaInfo.caption;
+          console.log(`Caption: ${shortCaption}`);
+        }
       }
       
       // Download the file
-      const filePath = await this.downloadFile(mediaInfo.videoUrl, mediaInfo.fileName);
+      const filePath = await this.downloadFile(mediaInfo.videoUrl, mediaInfo.fileName, false, globalProgressBar);
       
       // Download thumbnail if available
       if (mediaInfo.thumbnailUrl) {
@@ -270,17 +353,21 @@ export class Downloader {
             thumbnailFileName,
             true // Silent mode for thumbnail
           );
-          console.log(`Thumbnail saved to: ${thumbnailPath}`);
+          if (this.verbose) {
+            console.log(`Thumbnail saved to: ${thumbnailPath}`);
+          }
         } catch (err) {
           // Just log the error but don't fail the whole process
-          console.log(`Failed to download thumbnail: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          if (this.verbose) {
+            console.log(`Failed to download thumbnail: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
         }
       }
       
       // Save metadata if enabled
       await this.saveMetadataFile(mediaInfo, filePath);
       
-      console.log(`Successfully downloaded to: ${filePath}`);
+      console.log(`${chalk.green('✅ Successfully downloaded')} ${chalk.bold(baseName)}`);
       
       return filePath;
     } catch (error) {
@@ -300,27 +387,80 @@ export class Downloader {
     const results: string[] = [];
     const errors: { url: string, error: string }[] = [];
     
-    for (const url of urls) {
+    // Create global progress bar for batch operations
+    const globalProgressBar = new cliProgress.SingleBar({
+      format: `${chalk.magenta('Batch Progress')} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} reels`,
+      barCompleteChar: '█',
+      barIncompleteChar: '░',
+      hideCursor: true
+    });
+    
+    globalProgressBar.start(urls.length, 0);
+    
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
       try {
+        console.log(`\n${chalk.blue(`[${i + 1}/${urls.length}]`)} Processing reel...`);
         const filePath = await this.downloadReel(url);
         results.push(filePath);
+        globalProgressBar.update(i + 1);
       } catch (error) {
+        globalProgressBar.update(i + 1);
         if (error instanceof Error) {
           errors.push({ url, error: error.message });
+          console.error(`${chalk.red('❌ Error:')} ${error.message}`);
         } else {
           errors.push({ url, error: 'Unknown error' });
+          console.error(`${chalk.red('❌ Error:')} Unknown error`);
         }
       }
     }
     
+    globalProgressBar.stop();
+    
+    // Summary
+    console.log(`\n${chalk.green('📊 Batch Download Summary:')}`);
+    console.log(`${chalk.green('✅ Successful:')} ${results.length}`);
+    console.log(`${chalk.red('❌ Failed:')} ${errors.length}`);
+    
     // Log any errors
     if (errors.length > 0) {
-      console.error('Errors occurred while downloading reels:');
+      console.log(`\n${chalk.red('❌ Errors occurred:')}`);
       errors.forEach(({ url, error }) => {
-        console.error(`- ${url}: ${error}`);
+        const shortUrl = url.length > 50 ? url.substring(0, 50) + '...' : url;
+        console.error(`${chalk.red('•')} ${shortUrl}: ${error}`);
       });
     }
     
     return results;
+  }
+
+  /**
+   * Download reels from a file containing URLs
+   * @param filePath Path to file containing URLs
+   * @returns Array of paths to the downloaded files
+   */
+  public async downloadReelsFromFile(filePath: string): Promise<string[]> {
+    try {
+      const fileContent = await fs.readFile(filePath, 'utf-8');
+      const urls = fileContent
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#')) // Filter empty lines and comments
+        .filter(line => line.includes('instagram.com')); // Basic Instagram URL validation
+      
+      if (urls.length === 0) {
+        throw new Error('No valid Instagram URLs found in the file');
+      }
+      
+      console.log(`${chalk.blue('📂 Found')} ${urls.length} URLs in file`);
+      
+      return await this.downloadReels(urls);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to read URLs from file: ${error.message}`);
+      }
+      throw new Error('Failed to read URLs from file: Unknown error');
+    }
   }
 }
