@@ -30,6 +30,11 @@ interface InstagramApiOptions {
    * Custom user agent to use for requests
    */
   userAgent?: string;
+  
+  /**
+   * Whether to enable verbose console logging
+   */
+  verbose?: boolean;
 }
 
 /**
@@ -42,6 +47,7 @@ export class InstagramAPI {
   private static debug: boolean = false;
   private static debugDir: string = './debug';
   private static userAgent: string = InstagramAPI.DEFAULT_USER_AGENT;
+  private static verbose: boolean = false;
 
   /**
    * Extract the shortcode from an Instagram URL
@@ -90,22 +96,17 @@ export class InstagramAPI {
    * @param options Configuration options
    */
   public static configure(options: InstagramApiOptions): void {
-    if (options.debug !== undefined) {
-      this.debug = options.debug;
-    }
-    
-    if (options.debugDir) {
-      this.debugDir = options.debugDir;
-    }
-    
-    if (options.userAgent) {
-      this.userAgent = options.userAgent;
-    }
+    this.debug = options.debug || false;
+    this.debugDir = options.debugDir || './debug';
+    this.userAgent = options.userAgent || this.DEFAULT_USER_AGENT;
+    this.verbose = options.verbose || false;
     
     // Create debug directory if needed
     if (this.debug) {
       fs.ensureDirSync(this.debugDir);
-      console.log(`Debug mode enabled. Debug files will be saved to: ${this.debugDir}`);
+      if (this.verbose) {
+        console.log(`Debug mode enabled. Debug files will be saved to: ${this.debugDir}`);
+      }
     }
   }
   
@@ -127,7 +128,9 @@ export class InstagramAPI {
         typeof content === 'string' ? content : JSON.stringify(content, null, 2)
       );
       
-      console.log(`Debug info saved to: ${filePath}`);
+      if (this.verbose) {
+        console.log(`Debug info saved to: ${filePath}`);
+      }
     } catch (error) {
       console.error('Failed to save debug info:', error);
     }
@@ -147,7 +150,9 @@ export class InstagramAPI {
       }
       
       const shortcode = this.extractShortcode(url);
-      console.log(`Extracted shortcode: ${shortcode}`);
+      if (this.verbose) {
+        console.log(`Extracted shortcode: ${shortcode}`);
+      }
       
       // Try different URL formats to increase chances of success
       const urlFormats = [
@@ -164,7 +169,9 @@ export class InstagramAPI {
       // Try each URL format until one works
       for (const { url: formatUrl, userAgent } of urlFormats) {
         try {
-          console.log(`Trying URL format: ${formatUrl} with ${userAgent.substring(0, 20)}...`);
+          if (this.verbose) {
+            console.log(`Trying URL format: ${formatUrl} with ${userAgent.substring(0, 20)}...`);
+          }
           response = await axios.get(formatUrl, {
             headers: {
               'User-Agent': userAgent,
@@ -185,7 +192,9 @@ export class InstagramAPI {
           usedUserAgent = userAgent;
           break;
         } catch (err) {
-          console.log(`Failed to fetch ${formatUrl}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          if (this.verbose) {
+            console.log(`Failed to fetch ${formatUrl}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
           // Continue to the next URL format
         }
       }
@@ -194,7 +203,9 @@ export class InstagramAPI {
         throw new Error(`Failed to fetch Instagram content for shortcode: ${shortcode}`);
       }
       
-      console.log(`Successfully fetched content from: ${successUrl}`);
+      if (this.verbose) {
+        console.log(`Successfully fetched content from: ${successUrl}`);
+      }
       
       // Save the raw HTML response for debugging if enabled
       if (this.debug) {
@@ -236,9 +247,13 @@ export class InstagramAPI {
         try {
           jsonData = response.data;
           usedPattern = 'direct-api-response';
-          console.log('Successfully extracted JSON data from direct API response');
+          if (this.verbose) {
+            console.log('Successfully extracted JSON data from direct API response');
+          }
         } catch (err) {
-          console.log(`Failed to parse direct API JSON data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          if (this.verbose) {
+            console.log(`Failed to parse direct API JSON data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
         }
       }
       
@@ -251,7 +266,9 @@ export class InstagramAPI {
               if (typeof response.data === 'string' && response.data.trim().startsWith('{"items":')) {
                 jsonData = JSON.parse(response.data);
                 usedPattern = 'direct-json';
-                console.log('Successfully extracted JSON data using direct JSON pattern');
+                if (this.verbose) {
+                  console.log('Successfully extracted JSON data using direct JSON pattern');
+                }
                 break;
               }
               continue;
@@ -261,18 +278,24 @@ export class InstagramAPI {
             if (match && match[1]) {
               jsonData = JSON.parse(match[1]);
               usedPattern = pattern.toString();
-              console.log('Successfully extracted JSON data using pattern:', pattern);
+              if (this.verbose) {
+                console.log('Successfully extracted JSON data using pattern:', pattern);
+              }
               break;
             }
           } catch (err) {
-            console.log(`Failed to parse JSON data with pattern ${pattern}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            if (this.verbose) {
+              console.log(`Failed to parse JSON data with pattern ${pattern}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
           }
         }
       }
       
       // If we couldn't extract JSON data, try to find direct video URLs in the HTML content
       if (!jsonData) {
-        console.log('Could not extract JSON data, trying to find direct video URLs in HTML content...');
+        if (this.verbose) {
+          console.log('Could not extract JSON data, trying to find direct video URLs in HTML content...');
+        }
         
         if (typeof response.data === 'string') {
           // First try to extract metadata from script tags containing xdt_api__v1__media__shortcode__web_info
@@ -315,9 +338,13 @@ export class InstagramAPI {
                 }
               };
               usedPattern = 'individual-field-extraction';
-              console.log(`Found metadata: likes=${likes}, comments=${comments}, views=${views}, username=${username}`);
+              if (this.verbose) {
+                console.log(`Found metadata: likes=${likes}, comments=${comments}, views=${views}, username=${username}`);
+              }
             } catch (err) {
-              console.log('Failed to parse individual field metadata:', err instanceof Error ? err.message : 'Unknown error');
+              if (this.verbose) {
+                console.log('Failed to parse individual field metadata:', err instanceof Error ? err.message : 'Unknown error');
+              }
             }
           }
 
@@ -393,9 +420,13 @@ export class InstagramAPI {
           comments = media.comment_count || 0;
           views = media.view_count || media.play_count || 0;
           thumbnailUrl = media.image_versions2?.candidates?.[0]?.url || '';
-          console.log('Using metadata from PolarisPostRootQueryRelayPreloader');
+          if (this.verbose) {
+            console.log('Using metadata from PolarisPostRootQueryRelayPreloader');
+          }
         } else {
-          console.log('Using direct video URL from HTML content');
+          if (this.verbose) {
+            console.log('Using direct video URL from HTML content');
+          }
         }
       }
       

@@ -74,7 +74,8 @@ export class Downloader {
       // Configure the Instagram API
       InstagramAPI.configure({
         debug: this.debug,
-        debugDir: this.debugDir
+        debugDir: this.debugDir,
+        verbose: this.verbose
       });
     }
   }
@@ -161,11 +162,10 @@ export class Downloader {
    * Download a file from a URL with progress tracking
    * @param url URL to download from
    * @param fileName Name to save the file as
-   * @param silent Whether to suppress progress output
-   * @param progressBar Optional progress bar instance
+   * @param fileProgressBar Optional progress bar instance
    * @returns Path to the downloaded file
    */
-  private async downloadFile(url: string, fileName: string, silent: boolean = false, progressBar?: cliProgress.SingleBar): Promise<string> {
+  private async downloadFile(url: string, fileName: string, fileProgressBar?: cliProgress.SingleBar): Promise<string> {
     try {
       // Create output directory if it doesn't exist
       await fs.ensureDir(this.outputDir);
@@ -175,7 +175,7 @@ export class Downloader {
       const filePath = path.join(this.outputDir, uniqueFileName);
       
       // If the filename was changed, log it
-      if (uniqueFileName !== fileName && !silent && this.verbose) {
+      if (uniqueFileName !== fileName && this.verbose) {
         console.log(`File already exists. Using unique filename: ${uniqueFileName}`);
       }
       
@@ -207,17 +207,25 @@ export class Downloader {
       // Get content length for progress tracking
       const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
       let downloadedBytes = 0;
+      let totalBytes = contentLength;
       
-      // Create progress bar if not silent and no external progress bar provided
-      let fileProgressBar: cliProgress.SingleBar | undefined;
-      if (!silent && !progressBar && contentLength > 0) {
-        fileProgressBar = new cliProgress.SingleBar({
+      // Set up file progress bar if provided
+      if (fileProgressBar && contentLength > 0) {
+        fileProgressBar.setTotal(totalBytes);
+      }
+      
+      // Create local progress bar if not provided and content length is available
+      let localProgressBar: cliProgress.SingleBar | undefined;
+      if (!fileProgressBar && contentLength > 0) {
+        localProgressBar = new cliProgress.SingleBar({
           format: `${chalk.cyan('Downloading')} ${chalk.yellow(fileName)} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} bytes`,
           barCompleteChar: '█',
           barIncompleteChar: '░',
-          hideCursor: true
-        });
-        fileProgressBar.start(contentLength, 0);
+          hideCursor: true,
+          clearOnComplete: true,
+          stopOnComplete: true
+        }, cliProgress.Presets.shades_classic);
+        localProgressBar.start(totalBytes, 0);
       }
       
       // Create a write stream to save the file
@@ -238,8 +246,8 @@ export class Downloader {
             if (fileProgressBar) {
               fileProgressBar.update(downloadedBytes);
             }
-            if (progressBar) {
-              progressBar.increment(chunk.length);
+            if (localProgressBar) {
+              localProgressBar.update(downloadedBytes);
             }
           });
         } else if (this.verbose) {
@@ -252,7 +260,10 @@ export class Downloader {
           if (fileProgressBar) {
             fileProgressBar.stop();
           }
-          if (!silent && this.verbose) {
+          if (localProgressBar) {
+            localProgressBar.stop();
+          }
+          if (this.verbose) {
             console.log(`✅ Download completed: ${fileName}`);
           }
           resolve();
@@ -262,6 +273,9 @@ export class Downloader {
           if (fileProgressBar) {
             fileProgressBar.stop();
           }
+          if (localProgressBar) {
+            localProgressBar.stop();
+          }
           fs.unlink(filePath).catch(() => {}); // Clean up partial file
           reject(err);
         });
@@ -270,6 +284,9 @@ export class Downloader {
         response.body.on('error', (err) => {
           if (fileProgressBar) {
             fileProgressBar.stop();
+          }
+          if (localProgressBar) {
+            localProgressBar.stop();
           }
           fs.unlink(filePath).catch(() => {}); // Clean up partial file
           reject(new Error(`Connection error during download: ${err.message}`));
@@ -293,12 +310,12 @@ export class Downloader {
   }
 
   /**
-   * Download a reel from an Instagram URL
+   * Download a single reel from Instagram
    * @param url Instagram reel URL
-   * @param globalProgressBar Optional global progress bar for batch operations
+   * @param fileProgressBar Optional progress bar for individual file download
    * @returns Path to the downloaded file
    */
-  public async downloadReel(url: string, globalProgressBar?: cliProgress.SingleBar): Promise<string> {
+  public async downloadReel(url: string, fileProgressBar?: cliProgress.SingleBar): Promise<string> {
     try {
       if (this.verbose) {
         console.log(`Fetching information for: ${url}`);
@@ -307,7 +324,8 @@ export class Downloader {
       // Get media information with debug mode if enabled
       const mediaInfo = await InstagramAPI.getMediaInfo(url, {
         debug: this.debug,
-        debugDir: this.debugDir
+        debugDir: this.debugDir,
+        verbose: this.verbose
       });
       
       const baseName = path.basename(mediaInfo.fileName, '.mp4');
@@ -320,12 +338,14 @@ export class Downloader {
         const shouldSkip = existingFiles.video && (!this.saveMetadata || existingFiles.metadata);
         
         if (shouldSkip) {
-          console.log(`${chalk.yellow('⏭️  Skipping')} ${baseName} - files already exist`);
+          // Don't print skip messages when using progress bars to avoid interference
           return path.join(this.outputDir, mediaInfo.fileName);
         }
       }
       
-      console.log(`${chalk.green('📥 Downloading')} ${chalk.bold(baseName)}`);
+      if (!fileProgressBar) {
+        console.log(`${chalk.green('📥 Downloading')} ${chalk.bold(baseName)}`);
+      }
       
       // Log additional information if available and verbose mode is on
       if (this.verbose) {
@@ -341,8 +361,8 @@ export class Downloader {
         }
       }
       
-      // Download the file
-      const filePath = await this.downloadFile(mediaInfo.videoUrl, mediaInfo.fileName, false, globalProgressBar);
+      // Download the video file
+      const filePath = await this.downloadFile(mediaInfo.videoUrl, mediaInfo.fileName, fileProgressBar);
       
       // Download thumbnail if available
       if (mediaInfo.thumbnailUrl) {
@@ -350,8 +370,7 @@ export class Downloader {
           const thumbnailFileName = mediaInfo.fileName.replace('.mp4', '.jpg');
           const thumbnailPath = await this.downloadFile(
             mediaInfo.thumbnailUrl, 
-            thumbnailFileName,
-            true // Silent mode for thumbnail
+            thumbnailFileName
           );
           if (this.verbose) {
             console.log(`Thumbnail saved to: ${thumbnailPath}`);
@@ -367,7 +386,9 @@ export class Downloader {
       // Save metadata if enabled
       await this.saveMetadataFile(mediaInfo, filePath);
       
-      console.log(`${chalk.green('✅ Successfully downloaded')} ${chalk.bold(baseName)}`);
+      if (!fileProgressBar) {
+        console.log(`${chalk.green('✅ Successfully downloaded')} ${chalk.bold(baseName)}`);
+      }
       
       return filePath;
     } catch (error) {
@@ -387,48 +408,90 @@ export class Downloader {
     const results: string[] = [];
     const errors: { url: string, error: string }[] = [];
     
-    // Create global progress bar for batch operations
-    const globalProgressBar = new cliProgress.SingleBar({
-      format: `${chalk.magenta('Batch Progress')} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} reels`,
-      barCompleteChar: '█',
-      barIncompleteChar: '░',
-      hideCursor: true
+    // Create multibar for better terminal management
+    const multibar = new cliProgress.MultiBar({
+      clearOnComplete: false,
+      hideCursor: true,
+      format: ' {bar} | {filename} | {value}/{total}'
+    }, cliProgress.Presets.shades_grey);
+    
+    // Create batch progress bar first (will be at bottom)
+    const batchProgressBar = multibar.create(urls.length, 0, {
+      filename: chalk.bold.magenta('🎬 Batch Progress')
     });
     
-    globalProgressBar.start(urls.length, 0);
+    // File progress bar will be created dynamically above batch bar
+    let fileProgressBar: cliProgress.SingleBar | undefined;
     
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
+      const shortcode = url.split('/').pop()?.split('?')[0] || 'unknown';
+      
       try {
-        console.log(`\n${chalk.blue(`[${i + 1}/${urls.length}]`)} Processing reel...`);
-        const filePath = await this.downloadReel(url);
+        // Check if file will be skipped
+        const mediaInfo = await InstagramAPI.getMediaInfo(url, {
+          debug: this.debug,
+          debugDir: this.debugDir,
+          verbose: this.verbose
+        });
+        
+        const baseName = path.basename(mediaInfo.fileName, '.mp4');
+        let willSkip = false;
+        
+        if (this.skipExisting) {
+          const existingFiles = await this.checkExistingFiles(baseName);
+          willSkip = existingFiles.video && (!this.saveMetadata || existingFiles.metadata);
+        }
+        
+        // Create file progress bar only if not skipping (will appear above batch bar)
+        if (!willSkip) {
+          fileProgressBar = multibar.create(0, 0, {
+            filename: chalk.cyan(`📥 ${shortcode}`)
+          }, {
+            barCompleteChar: '=',
+            barIncompleteChar: '-',
+            format: ' {bar} | {filename} | {value}/{total} bytes'
+          });
+        }
+        
+        const filePath = await this.downloadReel(url, fileProgressBar);
         results.push(filePath);
-        globalProgressBar.update(i + 1);
+        
+        // Clean up file progress bar after completion
+        if (fileProgressBar && !willSkip) {
+          multibar.remove(fileProgressBar);
+          fileProgressBar = undefined;
+        }
+        
+        batchProgressBar.update(i + 1);
       } catch (error) {
-        globalProgressBar.update(i + 1);
+        // Clean up file progress bar on error
+        if (fileProgressBar) {
+          multibar.remove(fileProgressBar);
+          fileProgressBar = undefined;
+        }
+        
+        batchProgressBar.update(i + 1);
+        
         if (error instanceof Error) {
           errors.push({ url, error: error.message });
-          console.error(`${chalk.red('❌ Error:')} ${error.message}`);
         } else {
           errors.push({ url, error: 'Unknown error' });
-          console.error(`${chalk.red('❌ Error:')} Unknown error`);
         }
       }
     }
     
-    globalProgressBar.stop();
+    multibar.stop();
     
     // Summary
     console.log(`\n${chalk.green('📊 Batch Download Summary:')}`);
     console.log(`${chalk.green('✅ Successful:')} ${results.length}`);
     console.log(`${chalk.red('❌ Failed:')} ${errors.length}`);
     
-    // Log any errors
-    if (errors.length > 0) {
-      console.log(`\n${chalk.red('❌ Errors occurred:')}`);
+    if (errors.length > 0 && this.verbose) {
+      console.log(`\n${chalk.red('❌ Failed URLs:')}`);
       errors.forEach(({ url, error }) => {
-        const shortUrl = url.length > 50 ? url.substring(0, 50) + '...' : url;
-        console.error(`${chalk.red('•')} ${shortUrl}: ${error}`);
+        console.log(`  ${chalk.red('•')} ${url}: ${error}`);
       });
     }
     
