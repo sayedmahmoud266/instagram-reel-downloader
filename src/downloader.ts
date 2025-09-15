@@ -443,11 +443,53 @@ export class Downloader {
   public async downloadReelsFromFile(filePath: string): Promise<string[]> {
     try {
       const fileContent = await fs.readFile(filePath, 'utf-8');
-      const urls = fileContent
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#')) // Filter empty lines and comments
-        .filter(line => line.includes('instagram.com')); // Basic Instagram URL validation
+      const fileExt = path.extname(filePath).toLowerCase();
+      let urls: string[] = [];
+      
+      // Process file based on its extension
+      if (fileExt === '.json') {
+        try {
+          // Parse JSON file
+          const jsonData = JSON.parse(fileContent);
+          
+          // Handle different JSON structures
+          if (Array.isArray(jsonData)) {
+            // Simple array of URLs
+            urls = jsonData.filter(url => typeof url === 'string' && url.includes('instagram.com'));
+          } else if (typeof jsonData === 'object' && jsonData !== null) {
+            // Object with URLs as values
+            const possibleUrlArrays = Object.values(jsonData).filter(val => Array.isArray(val));
+            if (possibleUrlArrays.length > 0) {
+              // Use the first array found
+              urls = possibleUrlArrays[0].filter(url => typeof url === 'string' && url.includes('instagram.com'));
+            } else {
+              // Look for URL strings in the object
+              urls = Object.values(jsonData)
+                .filter((val): val is string => typeof val === 'string' && val.includes('instagram.com'));
+            }
+          }
+        } catch (err) {
+          throw new Error(`Invalid JSON format in file: ${filePath}`);
+        }
+      } else if (fileExt === '.csv') {
+        // Process CSV file
+        const lines = fileContent.split('\n');
+        
+        for (const line of lines) {
+          // Split by comma and trim each value
+          const values = line.split(',').map(val => val.trim());
+          
+          // Add any value that looks like an Instagram URL
+          urls.push(...values.filter(val => val.includes('instagram.com')));
+        }
+      } else {
+        // Default: treat as text file with one URL per line
+        urls = fileContent
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line && !line.startsWith('#')) // Filter empty lines and comments
+          .filter(line => line.includes('instagram.com')); // Basic Instagram URL validation
+      }
       
       if (urls.length === 0) {
         throw new Error('No valid Instagram URLs found in the file');
